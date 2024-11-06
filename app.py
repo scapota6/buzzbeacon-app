@@ -1,5 +1,5 @@
 import streamlit as st
-from serpapi import GoogleSearch
+from serpapi.google_search_results import GoogleSearch
 from textblob import TextBlob
 
 # Define Your API Key
