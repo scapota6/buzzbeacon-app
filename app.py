@@ -26,7 +26,7 @@ else:
 # Define Your API Key
 API_KEY = "5d6c30c9990b21dd47dcab8b4458447a921c0f332b5d577ab5d5e166e02d457d"
 
-# Function to search for news articles with enhanced debugging and correct parsing
+# Function to search for news articles with correct parsing
 def google_search(query):
     params = {
         "q": f"{query} news",  # Focus on news articles
@@ -38,11 +38,7 @@ def google_search(query):
         search = GoogleSearch(params)
         response = search.get_dict()
 
-        # Print the entire response for debugging purposes
-        st.write("Debugging Info: Full API Response")
-        st.write(response)
-
-        # Check for news results
+        # Return only the news results
         if 'news_results' in response:
             return response['news_results']
         
@@ -177,8 +173,6 @@ if 'searched' in st.session_state and st.session_state.searched:
                 snippet = news.get("snippet", "")
 
                 if title and link:
-                    st.markdown(f"**Title**: [{title}]({link})")
-                    st.write(f"Snippet: {snippet}")
+                    st.markdown(f"**[{title}]({link})**")
+                    st.write(f"{snippet}")
                     st.write("---")
-                else:
-                    st.warning("News item did not have a title or link, skipping...")
