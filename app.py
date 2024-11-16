@@ -6,6 +6,8 @@ import base64
 import json
 from serpapi import GoogleSearch
 from textblob import TextBlob
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 # Read the credentials from the environment variable
 firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
@@ -57,12 +59,40 @@ def register_user(email, password):
         st.success("Account created successfully. Please check your email to verify your account.")
         
         # Send email verification
-        link = auth.generate_email_verification_link(email)
-        st.write(f"A verification email has been sent to {email}. Please check your inbox.")
+        send_verification_email(email)
         
         return user.uid
     except Exception as e:
         st.error(f"Error creating user: {e}")
+
+# Function to send verification email using SendGrid
+def send_verification_email(user_email):
+    try:
+        # Get the SendGrid API key from Streamlit Secrets
+        sendgrid_api_key = st.secrets["SENDGRID_API_KEY"]
+
+        message = Mail(
+            from_email='buzzbeaconinfo@gmail.com',
+            to_emails=user_email,
+            subject='Welcome to BuzzBeacon - Confirm Your Email',
+            html_content="""
+            <p>Hi there,</p>
+            <p>Thank you for registering with BuzzBeacon! Please click the link below to confirm your email address and get started:</p>
+            <a href="#">Confirm Your Email</a>
+            <p>We're excited to have you onboard!</p>
+            <p>Best,<br>BuzzBeacon Team</p>
+            """
+        )
+
+        sg = SendGridAPIClient(sendgrid_api_key)
+        response = sg.send(message)
+        if response.status_code == 202:
+            st.success("A verification email has been sent to your inbox.")
+        else:
+            st.error(f"Failed to send verification email: {response.body}")
+
+    except Exception as e:
+        st.error(f"Failed to send verification email: {e}")
 
 # Function to handle user login
 def login_user(email, password):
