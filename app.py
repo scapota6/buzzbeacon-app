@@ -1,71 +1,32 @@
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, auth, firestore
-import os
-import base64
-import json
-from serpapi import GoogleSearch
-from textblob import TextBlob
+from firebase_admin import credentials, firestore, initialize_app
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+import pyrebase
+import json
+import time
 
-# Read the credentials from the environment variable
-firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
-if firebase_credentials:
-    # Decode the base64-encoded credentials
-    decoded_credentials = base64.b64decode(firebase_credentials)
-    credentials_dict = json.loads(decoded_credentials)
-    
-    # Initialize Firebase Admin SDK only if not already initialized
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(credentials_dict)
-        firebase_admin.initialize_app(cred)
+# Initialize Firebase
+if not initialize_app._apps:
+    cred = credentials.Certificate(json.loads(st.secrets["FIREBASE_CREDENTIALS"]))
+    initialize_app(cred)
+db = firestore.client()
 
-    db = firestore.client()
-else:
-    raise FileNotFoundError("Firebase credentials are not set in the environment variables.")
+# Firebase Config
+firebase_config = {
+    "apiKey": st.secrets["FIREBASE_API_KEY"],
+    "authDomain": st.secrets["FIREBASE_AUTH_DOMAIN"],
+    "projectId": st.secrets["FIREBASE_PROJECT_ID"],
+    "storageBucket": st.secrets["FIREBASE_STORAGE_BUCKET"],
+    "messagingSenderId": st.secrets["FIREBASE_MESSAGING_SENDER_ID"],
+    "appId": st.secrets["FIREBASE_APP_ID"],
+    "measurementId": st.secrets["FIREBASE_MEASUREMENT_ID"]
+}
 
-# Define Your API Key
-API_KEY = "5d6c30c9990b21dd47dcab8b4458447a921c0f332b5d577ab5d5e166e02d457d"
+firebase = pyrebase.initialize_app(firebase_config)
+auth = firebase.auth()
 
-# Function to search for news articles with correct parsing
-def google_search(query):
-    params = {
-        "q": f"{query} news",  # Focus on news articles
-        "location": "United States",
-        "api_key": API_KEY,
-        "tbm": "nws"  # Target the news search type
-    }
-    try:
-        search = GoogleSearch(params)
-        response = search.get_dict()
-
-        # Return only the news results
-        if 'news_results' in response:
-            return response['news_results']
-        
-        # If no news_results are present, handle gracefully
-        st.error("No news results found in the response.")
-        return []
-
-    except Exception as e:
-        st.error(f"An error occurred while fetching news: {e}")
-        return []
-
-# Function to handle user registration with email verification
-def register_user(email, password):
-    try:
-        user = auth.create_user(email=email, password=password)
-        st.success("Account created successfully. Please check your email to verify your account.")
-        
-        # Send email verification
-        send_verification_email(email)
-        
-        return user.uid
-    except Exception as e:
-        st.error(f"Error creating user: {e}")
-
-# Function to send verification email using SendGrid
+# Streamlit App
 def send_verification_email(user_email):
     try:
         # Get the SendGrid API key from Streamlit Secrets
@@ -86,123 +47,112 @@ def send_verification_email(user_email):
 
         sg = SendGridAPIClient(sendgrid_api_key)
         response = sg.send(message)
+
         if response.status_code == 202:
             st.success("A verification email has been sent to your inbox.")
         else:
-            st.error(f"Failed to send verification email: {response.body}")
+            st.error(f"Failed to send verification email. Status Code: {response.status_code}, Body: {response.body}")
 
     except Exception as e:
         st.error(f"Failed to send verification email: {e}")
 
-# Function to handle user login
-def login_user(email, password):
-    try:
-        user_record = auth.get_user_by_email(email)
-        st.success(f"Logged in as {email}")
-        return user_record.uid
-    except Exception as e:
-        st.error(f"Login failed: {e}")
-        return None
-
 # Streamlit app layout
-st.title("Stock News Sentiment Analyzer")
+st.title("BuzzBeacon Stock News & Watchlist")
 
-# Handle login/signup
-if 'user_uid' not in st.session_state:
-    st.session_state.user_uid = None
-    st.session_state.is_logged_in = False
+# User Authentication - Login, Register, or Continue as Guest
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+    st.session_state.user_email = ""
 
-# Pop-up modal for login/signup
-if not st.session_state.is_logged_in:
-    st.write("### Log in or Register")
-    login_option = st.radio("Choose an option:", ["Log In", "Register", "Continue as Guest"])
+with st.sidebar:
+    if st.session_state.authenticated:
+        st.success(f"Logged in as {st.session_state.user_email}")
+        if st.button("Logout"):
+            st.session_state.authenticated = False
+            st.session_state.user_email = ""
+            st.experimental_rerun()
+    else:
+        auth_option = st.selectbox("Authentication", ["Login", "Register", "Continue as Guest"])
+        if auth_option == "Login":
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            if st.button("Login"):
+                try:
+                    user = auth.sign_in_with_email_and_password(email, password)
+                    st.session_state.authenticated = True
+                    st.session_state.user_email = email
+                    st.success("Successfully logged in!")
+                    st.experimental_rerun()
+                except Exception as e:
+                    st.error(f"Failed to log in: {e}")
+        elif auth_option == "Register":
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            if st.button("Register"):
+                try:
+                    auth.create_user_with_email_and_password(email, password)
+                    send_verification_email(email)
+                    st.success("Successfully registered! Please check your email to confirm your registration.")
+                except Exception as e:
+                    st.error(f"Failed to register: {e}")
+        elif auth_option == "Continue as Guest":
+            if st.button("Continue"):
+                st.session_state.authenticated = True
+                st.success("Continuing as guest.")
+                st.experimental_rerun()
 
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
+# Watchlist Feature
+if st.session_state.authenticated:
+    user_watchlist = db.collection('watchlists').document(st.session_state.user_email).get()
+    if user_watchlist.exists:
+        watchlist = user_watchlist.to_dict().get('stocks', [])
+    else:
+        watchlist = []
 
-    if login_option == "Log In":
-        if st.button("Log In"):
-            uid = login_user(email, password)
-            if uid:
-                st.session_state.user_uid = uid
-                st.session_state.is_logged_in = True
+    st.sidebar.header("Your Watchlist")
+    if watchlist:
+        for stock in watchlist:
+            if st.sidebar.button(stock):
+                st.session_state.selected_stock = stock
+    else:
+        st.sidebar.write("Your watchlist is empty.")
 
-    elif login_option == "Register":
-        if st.button("Register"):
-            uid = register_user(email, password)
-            if uid:
-                st.session_state.user_uid = uid
-                st.session_state.is_logged_in = True
-
-    elif login_option == "Continue as Guest":
-        if st.button("Continue as Guest"):
-            st.session_state.is_logged_in = True
-
-# Initialize Streamlit session state for watchlist
-if 'watchlist' not in st.session_state:
-    st.session_state.watchlist = []
-
-# If the user is logged in, load their watchlist from Firestore
-if st.session_state.is_logged_in and st.session_state.user_uid:
-    user_doc = db.collection('users').document(st.session_state.user_uid)
-    user_data = user_doc.get()
-    if user_data.exists:
-        st.session_state.watchlist = user_data.to_dict().get('watchlist', [])
-
-# Get user input for the search query
-query = st.text_input("Enter stock ticker or company name:", "AAPL")
-
-# Create two columns for adding to watchlist and searching
-col1, col2 = st.columns([1, 1])
-
-# Add to Watchlist Button
-with col1:
-    if st.button("Add to Watchlist"):
-        if query not in st.session_state.watchlist:
-            st.session_state.watchlist.append(query)
-            if st.session_state.is_logged_in and st.session_state.user_uid:
-                # Save updated watchlist to Firestore
-                db.collection('users').document(st.session_state.user_uid).set({
-                    'watchlist': st.session_state.watchlist
-                })
-            st.success(f"Added {query} to your watchlist.")
+    new_stock = st.text_input("Add a stock to your watchlist:")
+    if st.button("Add to Watchlist") and new_stock:
+        if new_stock not in watchlist:
+            watchlist.append(new_stock)
+            db.collection('watchlists').document(st.session_state.user_email).set({'stocks': watchlist})
+            st.success(f"Added {new_stock} to your watchlist.")
         else:
-            st.warning(f"{query} is already in your watchlist.")
+            st.warning(f"{new_stock} is already in your watchlist.")
 
-# Search button
-with col2:
-    if st.button("Search"):
-        st.session_state.searched = True
-        st.session_state.selected_stock = query  # Save the current stock being searched
+# Stock News Search
+def google_search(query):
+    params = {
+        "q": f"{query} news",
+        "location": "United States",
+        "api_key": st.secrets["SERPAPI_API_KEY"],
+        "tbm": "nws"
+    }
+    search = GoogleSearch(params)
+    response = search.get_dict()
+    return response.get("news_results", [])
 
-# Display the user's watchlist
-st.subheader("Your Watchlist")
-if st.session_state.watchlist:
-    for stock in st.session_state.watchlist:
-        if st.button(stock):
-            st.session_state.searched = True
-            st.session_state.selected_stock = stock  # Save the stock name from the watchlist that was clicked
-else:
-    st.write("Your watchlist is empty. Add stocks using the button above.")
+if 'selected_stock' not in st.session_state:
+    st.session_state.selected_stock = "AAPL"
 
-# If searched, display news
-if 'searched' in st.session_state and st.session_state.searched:
-    selected_stock = st.session_state.selected_stock
-    st.subheader(f"News for {selected_stock}")
-
-    with st.spinner(f"Fetching news and analyzing sentiment for {selected_stock}..."):
-        results = google_search(selected_stock)
-
-        if not results:
-            st.error("No results found or error fetching the data.")
-        else:
-            # Display news results with titles as hyperlinks
-            for news in results:
-                title = news.get("title")
-                link = news.get("link")
-                snippet = news.get("snippet", "")
-
-                if title and link:
-                    st.markdown(f"**[{title}]({link})**")
-                    st.write(f"{snippet}")
-                    st.write("---")
+query = st.text_input("Enter stock ticker or company name:", st.session_state.selected_stock)
+if st.button("Search"):
+    results = google_search(query)
+    if not results:
+        st.error("No results found or error fetching the data.")
+    else:
+        st.write(f"News for {query}")
+        for result in results:
+            title = result.get("title")
+            link = result.get("link")
+            snippet = result.get("snippet", "")
+            if title and link:
+                st.write(f"**[{title}]({link})**")
+                st.write(f"{snippet}")
+                st.write("---")
