@@ -4,9 +4,10 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 import json
 import time
+import firebase_admin
 
 # Initialize Firebase
-if not initialize_app._apps:
+if not firebase_admin._apps:
     cred = credentials.Certificate(json.loads(st.secrets["FIREBASE_CREDENTIALS"]))
     initialize_app(cred)
 db = firestore.client()
@@ -135,4 +136,13 @@ if st.button("Search"):
     results = google_search(query)
     if not results:
         st.error("No results found or error fetching the data.")
-   
+    else:
+        st.write(f"News for {query}")
+        for result in results:
+            title = result.get("title")
+            link = result.get("link")
+            snippet = result.get("snippet", "")
+            if title and link:
+                st.write(f"**[{title}]({link})**")
+                st.write(f"{snippet}")
+                st.write("---")
