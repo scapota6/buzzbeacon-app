@@ -3,3 +3,4 @@ google-search-results
 textblob
 nltk
 firebase-admin
+sendgrid
