@@ -6,9 +6,12 @@ import firebase_admin
 
 # Initialize Firebase
 if not firebase_admin._apps:
-    cred = credentials.Certificate(st.secrets["FIREBASE_CREDENTIALS"])
-    initialize_app(cred)
-db = firestore.client()
+    try:
+        cred = credentials.Certificate(st.secrets["FIREBASE_CREDENTIALS"])
+        initialize_app(cred)
+        db = firestore.client()
+    except ValueError as e:
+        st.error(f"Failed to initialize Firebase: {e}")
 
 # Streamlit App
 def send_verification_email(user_email):
