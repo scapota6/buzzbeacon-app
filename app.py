@@ -14,9 +14,11 @@ if firebase_credentials:
     decoded_credentials = base64.b64decode(firebase_credentials)
     credentials_dict = json.loads(decoded_credentials)
     
-    # Initialize Firebase Admin SDK
-    cred = credentials.Certificate(credentials_dict)
-    firebase_admin.initialize_app(cred)
+    # Initialize Firebase Admin SDK only if not already initialized
+    if not firebase_admin._apps:
+        cred = credentials.Certificate(credentials_dict)
+        firebase_admin.initialize_app(cred)
+
     db = firestore.client()
 else:
     raise FileNotFoundError("Firebase credentials are not set in the environment variables.")
