@@ -26,7 +26,7 @@ else:
 # Define Your API Key
 API_KEY = "5d6c30c9990b21dd47dcab8b4458447a921c0f332b5d577ab5d5e166e02d457d"
 
-# Function to search for news articles
+# Function to search for news articles with enhanced debugging
 def google_search(query):
     params = {
         "q": f"{query} news",  # Focus on news articles
@@ -38,20 +38,29 @@ def google_search(query):
         search = GoogleSearch(params)
         response = search.get_dict()
 
+        # Print the entire response for debugging purposes
+        st.write("Debugging Info: Full API Response")
+        st.write(response)
+
         if 'error' in response:
             st.error(f"API error: {response['error']}")
             return []
 
         return response.get("news_results", [])
     except Exception as e:
-        st.error(f"An error occurred: {e}")
+        st.error(f"An error occurred while fetching news: {e}")
         return []
 
-# Function to handle user registration
+# Function to handle user registration with email verification
 def register_user(email, password):
     try:
         user = auth.create_user(email=email, password=password)
-        st.success("Account created successfully.")
+        st.success("Account created successfully. Please check your email to verify your account.")
+        
+        # Send email verification
+        link = auth.generate_email_verification_link(email)
+        st.write(f"A verification email has been sent to {email}. Please check your inbox.")
+        
         return user.uid
     except Exception as e:
         st.error(f"Error creating user: {e}")
@@ -158,4 +167,13 @@ if 'searched' in st.session_state and st.session_state.searched:
         if not results:
             st.error("No results found or error fetching the data.")
         else:
-            st.write("News and sentiment analysis here...")
+            # Display news results
+            for news in results:
+                title = news.get("title")
+                link = news.get("link")
+                snippet = news.get("snippet", "")
+
+                if title and link:
+                    st.write(f"**Title**: [{title}]({link})")
+                    st.write(f"Snippet: {snippet}")
+                    st.write("---")
