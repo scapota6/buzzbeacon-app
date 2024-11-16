@@ -1,149 +1,160 @@
 import streamlit as st
-from firebase_admin import credentials, firestore, initialize_app, auth
+import firebase_admin
+from firebase_admin import credentials, auth
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
-import firebase_admin
+import json
+from google_search_results import GoogleSearch
+from textblob import TextBlob
 
-# Initialize Firebase
+# Firebase initialization
 if not firebase_admin._apps:
-    try:
-        cred = credentials.Certificate(st.secrets["FIREBASE_CREDENTIALS"])
-        initialize_app(cred)
-        db = firestore.client()
-    except ValueError as e:
-        st.error(f"Failed to initialize Firebase: {e}")
+    firebase_credentials = json.loads(st.secrets["FIREBASE_CREDENTIALS"])
+    cred = credentials.Certificate(firebase_credentials)
+    firebase_admin.initialize_app(cred)
 
-# Streamlit App
-def send_verification_email(user_email):
-    try:
-        # Get the SendGrid API key from Streamlit Secrets
-        sendgrid_api_key = st.secrets["SENDGRID_API_KEY"]
+# Streamlit App for BuzzBeacon - Stock News Sentiment
+st.title("BuzzBeacon - Stock News Sentiment Analyzer")
 
-        message = Mail(
-            from_email='buzzbeaconinfo@gmail.com',
-            to_emails=user_email,
-            subject='Welcome to BuzzBeacon - Confirm Your Email',
-            html_content="""
-            <p>Hi there,</p>
-            <p>Thank you for registering with BuzzBeacon! Please click the link below to confirm your email address and get started:</p>
-            <a href="#">Confirm Your Email</a>
-            <p>We're excited to have you onboard!</p>
-            <p>Best,<br>BuzzBeacon Team</p>
-            """
-        )
+# Registration/Login Section
+st.sidebar.title("Account Management")
+choice = st.sidebar.radio("Select Action", ["Login", "Register", "Continue as Guest"])
 
-        sg = SendGridAPIClient(sendgrid_api_key)
-        response = sg.send(message)
+if choice == "Register":
+    st.sidebar.subheader("Create a New Account")
+    email = st.sidebar.text_input("Enter your email", key="email")
+    password = st.sidebar.text_input("Enter your password", type="password", key="password")
+    if st.sidebar.button("Register"):
+        if email and password:
+            try:
+                # Register user in Firebase
+                user = auth.create_user(
+                    email=email,
+                    password=password,
+                )
+                st.success(f"User {email} created successfully!")
 
-        if response.status_code == 202:
-            st.success("A verification email has been sent to your inbox.")
-        else:
-            st.error(f"Failed to send verification email. Status Code: {response.status_code}, Body: {response.body}")
-
-    except Exception as e:
-        st.error(f"Failed to send verification email: {e}")
-
-# Streamlit app layout
-st.title("BuzzBeacon Stock News & Watchlist")
-
-# User Authentication - Login, Register, or Continue as Guest
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-    st.session_state.user_email = ""
-
-with st.sidebar:
-    if st.session_state.authenticated:
-        st.success(f"Logged in as {st.session_state.user_email}")
-        if st.button("Logout"):
-            st.session_state.authenticated = False
-            st.session_state.user_email = ""
-            st.experimental_rerun()
-    else:
-        auth_option = st.selectbox("Authentication", ["Login", "Register", "Continue as Guest"])
-        if auth_option == "Login":
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            if st.button("Login"):
+                # Send confirmation email using SendGrid
                 try:
-                    user = auth.get_user_by_email(email)
-                    # Here, you would typically verify the password using your own implementation
-                    # This code assumes a password verification step is implemented elsewhere.
-                    st.session_state.authenticated = True
-                    st.session_state.user_email = email
-                    st.success("Successfully logged in!")
-                    st.experimental_rerun()
+                    sendgrid_api_key = st.secrets["SENDGRID_API_KEY"]
+                    sg = SendGridAPIClient(sendgrid_api_key)
+                    message = Mail(
+                        from_email='buzzbeaconinfo@gmail.com',
+                        to_emails=email,
+                        subject='BuzzBeacon Registration Confirmation',
+                        html_content=f'''<strong>Thank you for registering at BuzzBeacon!</strong>
+                        <p>Click the link below to verify your email address:</p>
+                        <a href="https://example.com/verify?uid={user.uid}">Verify Email</a>
+                        '''
+                    )
+                    response = sg.send(message)
+                    st.success("Verification email sent successfully!")
                 except Exception as e:
-                    st.error(f"Failed to log in: {e}")
-        elif auth_option == "Register":
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            if st.button("Register"):
-                try:
-                    user = auth.create_user(email=email, password=password)
-                    send_verification_email(email)
-                    st.success("Successfully registered! Please check your email to confirm your registration.")
-                except Exception as e:
-                    st.error(f"Failed to register: {e}")
-        elif auth_option == "Continue as Guest":
-            if st.button("Continue"):
-                st.session_state.authenticated = True
-                st.success("Continuing as guest.")
-                st.experimental_rerun()
+                    st.error(f"Failed to send verification email: {e}")
 
-# Watchlist Feature
-if st.session_state.authenticated:
-    user_watchlist = db.collection('watchlists').document(st.session_state.user_email).get()
-    if user_watchlist.exists:
-        watchlist = user_watchlist.to_dict().get('stocks', [])
-    else:
-        watchlist = []
-
-    st.sidebar.header("Your Watchlist")
-    if watchlist:
-        for stock in watchlist:
-            if st.sidebar.button(stock):
-                st.session_state.selected_stock = stock
-    else:
-        st.sidebar.write("Your watchlist is empty.")
-
-    new_stock = st.text_input("Add a stock to your watchlist:")
-    if st.button("Add to Watchlist") and new_stock:
-        if new_stock not in watchlist:
-            watchlist.append(new_stock)
-            db.collection('watchlists').document(st.session_state.user_email).set({'stocks': watchlist})
-            st.success(f"Added {new_stock} to your watchlist.")
+            except Exception as e:
+                st.error(f"Failed to create user: {e}")
         else:
-            st.warning(f"{new_stock} is already in your watchlist.")
+            st.error("Please provide both email and password.")
 
-# Stock News Search
-from serpapi import GoogleSearch
+elif choice == "Login":
+    st.sidebar.subheader("Login to Your Account")
+    login_email = st.sidebar.text_input("Enter your email", key="login_email")
+    login_password = st.sidebar.text_input("Enter your password", type="password", key="login_password")
+    if st.sidebar.button("Login Now"):
+        # This example does not implement the full login mechanism.
+        st.write("Login functionality can be implemented here.")
 
-def google_search(query):
-    params = {
-        "q": f"{query} news",
-        "location": "United States",
-        "api_key": st.secrets["SERPAPI_API_KEY"],
-        "tbm": "nws"
-    }
-    search = GoogleSearch(params)
-    response = search.get_dict()
-    return response.get("news_results", [])
+# Main app functionality for guest and logged-in users
+st.subheader("Search Stock News Sentiment")
+query = st.text_input("Enter stock ticker or company name:", "AAPL")
 
-if 'selected_stock' not in st.session_state:
-    st.session_state.selected_stock = "AAPL"
-
-query = st.text_input("Enter stock ticker or company name:", st.session_state.selected_stock)
 if st.button("Search"):
-    results = google_search(query)
-    if not results:
-        st.error("No results found or error fetching the data.")
+    if query:
+        # Perform Google Search using SerpApi
+        params = {
+            "q": f"{query} news",
+            "location": "United States",
+            "api_key": st.secrets["SERPAPI_API_KEY"],
+            "tbm": "nws"
+        }
+        search = GoogleSearch(params)
+        response = search.get_dict()
+
+        # Display Debugging Info (Optional)
+        st.write("Debugging Info: Full API Response")
+        st.json(response)
+
+        # Extract news results and display
+        news_results = response.get("news_results", [])
+        if news_results:
+            for result in news_results:
+                title = result.get("title")
+                link = result.get("link")
+                snippet = result.get("snippet", "")
+
+                if title and link:
+                    # Perform sentiment analysis using TextBlob
+                    analysis = TextBlob(f"{title}. {snippet}")
+                    polarity = analysis.sentiment.polarity
+                    sentiment = "Neutral"
+                    if polarity > 0.05:
+                        sentiment = "Positive"
+                    elif polarity < -0.05:
+                        sentiment = "Negative"
+
+                    # Display news with sentiment
+                    st.write(f"**[{title}]({link})**")
+                    st.write(f"Sentiment: {sentiment}")
+                    st.write("---")
+        else:
+            st.error("No news results found.")
+
+# Watchlist Functionality
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = []
+
+if st.checkbox("Add to Watchlist"):
+    if query not in st.session_state.watchlist:
+        st.session_state.watchlist.append(query)
+        st.success(f"{query} added to watchlist.")
     else:
-        st.write(f"News for {query}")
-        for result in results:
-            title = result.get("title")
-            link = result.get("link")
-            snippet = result.get("snippet", "")
-            if title and link:
-                st.write(f"**[{title}]({link})**")
-                st.write(f"{snippet}")
-                st.write("---")
+        st.info(f"{query} is already in your watchlist.")
+
+st.subheader("Your Watchlist")
+for stock in st.session_state.watchlist:
+    if st.button(f"View News for {stock}"):
+        # Perform Google Search using SerpApi for the watchlist item
+        params = {
+            "q": f"{stock} news",
+            "location": "United States",
+            "api_key": st.secrets["SERPAPI_API_KEY"],
+            "tbm": "nws"
+        }
+        search = GoogleSearch(params)
+        response = search.get_dict()
+
+        # Extract news results and display
+        news_results = response.get("news_results", [])
+        if news_results:
+            for result in news_results:
+                title = result.get("title")
+                link = result.get("link")
+                snippet = result.get("snippet", "")
+
+                if title and link:
+                    # Perform sentiment analysis using TextBlob
+                    analysis = TextBlob(f"{title}. {snippet}")
+                    polarity = analysis.sentiment.polarity
+                    sentiment = "Neutral"
+                    if polarity > 0.05:
+                        sentiment = "Positive"
+                    elif polarity < -0.05:
+                        sentiment = "Negative"
+
+                    # Display news with sentiment
+                    st.write(f"**[{title}]({link})**")
+                    st.write(f"Sentiment: {sentiment}")
+                    st.write("---")
+        else:
+            st.error("No news results found.")
