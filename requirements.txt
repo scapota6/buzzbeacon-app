@@ -4,4 +4,3 @@ textblob
 nltk
 firebase-admin
 sendgrid
-pyrebase4
