@@ -26,7 +26,7 @@ else:
 # Define Your API Key
 API_KEY = "5d6c30c9990b21dd47dcab8b4458447a921c0f332b5d577ab5d5e166e02d457d"
 
-# Function to search for news articles with enhanced debugging
+# Function to search for news articles with enhanced debugging and correct parsing
 def google_search(query):
     params = {
         "q": f"{query} news",  # Focus on news articles
@@ -42,11 +42,14 @@ def google_search(query):
         st.write("Debugging Info: Full API Response")
         st.write(response)
 
-        if 'error' in response:
-            st.error(f"API error: {response['error']}")
-            return []
+        # Check for news results
+        if 'news_results' in response:
+            return response['news_results']
+        
+        # If no news_results are present, handle gracefully
+        st.error("No news results found in the response.")
+        return []
 
-        return response.get("news_results", [])
     except Exception as e:
         st.error(f"An error occurred while fetching news: {e}")
         return []
@@ -167,13 +170,15 @@ if 'searched' in st.session_state and st.session_state.searched:
         if not results:
             st.error("No results found or error fetching the data.")
         else:
-            # Display news results
+            # Display news results with titles as hyperlinks
             for news in results:
                 title = news.get("title")
                 link = news.get("link")
                 snippet = news.get("snippet", "")
 
                 if title and link:
-                    st.write(f"**Title**: [{title}]({link})")
+                    st.markdown(f"**Title**: [{title}]({link})")
                     st.write(f"Snippet: {snippet}")
                     st.write("---")
+                else:
+                    st.warning("News item did not have a title or link, skipping...")
