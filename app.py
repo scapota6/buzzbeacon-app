@@ -2,13 +2,11 @@ import streamlit as st
 from firebase_admin import credentials, firestore, initialize_app, auth
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
-import json
-import time
 import firebase_admin
 
 # Initialize Firebase
 if not firebase_admin._apps:
-    cred = credentials.Certificate(json.loads(st.secrets["FIREBASE_CREDENTIALS"]))
+    cred = credentials.Certificate(st.secrets["FIREBASE_CREDENTIALS"])
     initialize_app(cred)
 db = firestore.client()
 
