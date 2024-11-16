@@ -2,3 +2,4 @@ streamlit
 google-search-results
 textblob
 nltk
+firebase-admin
