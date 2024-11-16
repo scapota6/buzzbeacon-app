@@ -2,7 +2,6 @@ import streamlit as st
 from serpapi import GoogleSearch
 from textblob import TextBlob
 
-
 # Define Your API Key
 API_KEY = "5d6c30c9990b21dd47dcab8b4458447a921c0f332b5d577ab5d5e166e02d457d"
 
@@ -22,13 +21,14 @@ def google_search(query):
             st.error(f"API error: {response['error']}")
             return []
 
-        # Print full response for debugging
-        print(f"Full response: {response}")
-
         return response.get("news_results", [])
     except Exception as e:
         st.error(f"An error occurred: {e}")
         return []
+
+# Initialize Streamlit session state for watchlist
+if 'watchlist' not in st.session_state:
+    st.session_state.watchlist = []
 
 # Streamlit app layout
 st.title("Stock News Sentiment Analyzer")
@@ -36,48 +36,46 @@ st.title("Stock News Sentiment Analyzer")
 # Get user input for the search query
 query = st.text_input("Enter stock ticker or company name:", "AAPL")
 
-# Use session state to store search results and previous results
-if 'searched' not in st.session_state:
-    st.session_state.searched = False
-if 'previous_results' not in st.session_state:
-    st.session_state.previous_results = []
-
-# Create two columns for buttons
+# Create two columns for adding to watchlist and searching
 col1, col2 = st.columns([1, 1])
 
-# Search button
+# Add to Watchlist Button
 with col1:
+    if st.button("Add to Watchlist"):
+        if query not in st.session_state.watchlist:
+            st.session_state.watchlist.append(query)
+            st.success(f"Added {query} to your watchlist.")
+        else:
+            st.warning(f"{query} is already in your watchlist.")
+
+# Search button
+with col2:
     if st.button("Search"):
         st.session_state.searched = True
 
-# Refresh button
-with col2:
-    if st.session_state.searched:
-        if st.button("Refresh"):
-            st.experimental_rerun()
+# Display the user's watchlist
+st.subheader("Your Watchlist")
+if st.session_state.watchlist:
+    for stock in st.session_state.watchlist:
+        st.write(f"- {stock}")
+else:
+    st.write("Your watchlist is empty. Add stocks using the button above.")
 
 # If searched, display news
-if st.session_state.searched:
+if 'searched' in st.session_state and st.session_state.searched:
     with st.spinner("Fetching news and analyzing sentiment..."):
         results = google_search(query)
 
         if not results:
             st.error("No results found or error fetching the data.")
         else:
-            # Check if there are new results
-            new_results = []
-            for result in results:
-                if result not in st.session_state.previous_results:
-                    new_results.append(result)
-                    st.session_state.previous_results.append(result)
-
             # Create separate lists for positive, negative, and neutral news
             positive_news = []
             negative_news = []
             neutral_news = []
 
             # Analyze sentiment and categorize
-            for result in new_results:
+            for result in results:
                 title = result.get("title")
                 link = result.get("link")
                 snippet = result.get("snippet", "")
@@ -126,6 +124,3 @@ if st.session_state.searched:
                     st.write("---")
             else:
                 st.write("No new neutral news found.")
-
-    # Refresh the app using Streamlit's rerun capability (without sleep)
-    st.experimental_rerun()
