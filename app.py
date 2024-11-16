@@ -1,13 +1,25 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
+import os
+import base64
+import json
 from serpapi import GoogleSearch
 from textblob import TextBlob
 
-# Initialize Firebase Admin SDK
-cred = credentials.Certificate("firebase_credentials.json")  # Make sure the filename matches exactly
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+# Read the credentials from the environment variable
+firebase_credentials = os.getenv("FIREBASE_CREDENTIALS")
+if firebase_credentials:
+    # Decode the base64-encoded credentials
+    decoded_credentials = base64.b64decode(firebase_credentials)
+    credentials_dict = json.loads(decoded_credentials)
+    
+    # Initialize Firebase Admin SDK
+    cred = credentials.Certificate(credentials_dict)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+else:
+    raise FileNotFoundError("Firebase credentials are not set in the environment variables.")
 
 # Define Your API Key
 API_KEY = "5d6c30c9990b21dd47dcab8b4458447a921c0f332b5d577ab5d5e166e02d457d"
@@ -45,7 +57,6 @@ def register_user(email, password):
 # Function to handle user login
 def login_user(email, password):
     try:
-        # For a real implementation, you'd use Firebase Authentication client-side SDK for login
         user_record = auth.get_user_by_email(email)
         st.success(f"Logged in as {email}")
         return user_record.uid
@@ -145,5 +156,4 @@ if 'searched' in st.session_state and st.session_state.searched:
         if not results:
             st.error("No results found or error fetching the data.")
         else:
-            # Displaying news and sentiment as previously implemented
             st.write("News and sentiment analysis here...")
