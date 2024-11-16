@@ -52,19 +52,25 @@ with col1:
 with col2:
     if st.button("Search"):
         st.session_state.searched = True
+        st.session_state.selected_stock = query  # Save the current stock being searched
 
 # Display the user's watchlist
 st.subheader("Your Watchlist")
 if st.session_state.watchlist:
     for stock in st.session_state.watchlist:
-        st.write(f"- {stock}")
+        if st.button(stock):
+            st.session_state.searched = True
+            st.session_state.selected_stock = stock  # Save the stock name from the watchlist that was clicked
 else:
     st.write("Your watchlist is empty. Add stocks using the button above.")
 
 # If searched, display news
 if 'searched' in st.session_state and st.session_state.searched:
-    with st.spinner("Fetching news and analyzing sentiment..."):
-        results = google_search(query)
+    selected_stock = st.session_state.selected_stock
+    st.subheader(f"News for {selected_stock}")
+
+    with st.spinner(f"Fetching news and analyzing sentiment for {selected_stock}..."):
+        results = google_search(selected_stock)
 
         if not results:
             st.error("No results found or error fetching the data.")
